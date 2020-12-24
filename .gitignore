@@ -160,3 +160,7 @@ ta_data.parquet
 /strategy_entrances_exits/
 /cache.sqlite
 /counter.txt
+/ml_metadata_trend.pkl
+/ml_metadata.pkl
+/ml_metadata_mr.pkl
+/sec_filings/
