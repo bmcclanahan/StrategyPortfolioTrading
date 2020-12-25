@@ -5,6 +5,14 @@ import numpy as np
 import pandas as pd
 
 
+def run_strategy_on_data(CustStrat, data_loc='ta_data.parquet', strategy_type='mean_reversion'):
+    df = pd.read_parquet(data_loc).reset_index(drop=True)
+    df.loc[:, 'date'] = df.Date
+    strat = CustStrat(df)
+    strat.run_backtest_generate_reports(strategy_type=strategy_type)
+    del df
+    del strat
+
 @jit(nopython=True)
 def backtest_numba(enter_exit, close_price, open_price, df_index, stop_thresh,
                    run_length, inv_price, equity_signal, bool_date, mv_avg_ratio_thresh):

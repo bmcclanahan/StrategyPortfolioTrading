@@ -1,8 +1,0 @@
-all_cap
-backtesting
-data
-equity_curves
-positions
-profit_reports
-signals
-strategy_entrances_exits
