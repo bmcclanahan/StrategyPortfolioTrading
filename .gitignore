@@ -165,3 +165,5 @@ ta_data.parquet
 /portfolios/lrg_med_equity/ml_metadata_mr.pkl
 /sec_filings/
 
+#excel files
+*.xlsx
