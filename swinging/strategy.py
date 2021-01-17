@@ -5,17 +5,18 @@ import numpy as np
 import pandas as pd
 
 
-def run_strategy_on_data(CustStrat, data_loc='ta_data.parquet', strategy_type='mean_reversion'):
+def run_strategy_on_data(CustStrat, data_loc='ta_data.parquet', strategy_type='mean_reversion', run_length=30):
     df = pd.read_parquet(data_loc).reset_index(drop=True)
     df.loc[:, 'date'] = df.Date
     strat = CustStrat(df)
-    strat.run_backtest_generate_reports(strategy_type=strategy_type)
+    strat.run_backtest_generate_reports(strategy_type=strategy_type, run_length=run_length)
     del df
     del strat
 
 @jit(nopython=True)
 def backtest_numba(enter_exit, close_price, open_price, df_index, stop_thresh,
-                   run_length, inv_price, equity_signal, bool_date, mv_avg_ratio_thresh):
+                   run_length, inv_price, equity_signal, bool_date, mv_avg_ratio_thresh,
+                   position, profit_target):
         in_trade = False
         n = len(enter_exit)
         actual_enter_exit = np.zeros(n)
@@ -24,8 +25,8 @@ def backtest_numba(enter_exit, close_price, open_price, df_index, stop_thresh,
         profit = np.zeros(n)
         exit_profit = np.zeros(n)
         exit_index = np.zeros(n) - 1
-        start_price = 0.0
-        enter_price = 0.0
+        start_price = 1e-18
+        enter_price = 1e-18
         top_price = start_price
         shares = 0
         for index in range(0, n):
@@ -33,6 +34,9 @@ def backtest_numba(enter_exit, close_price, open_price, df_index, stop_thresh,
             equity_stop_signal = equity_signal[index] < mv_avg_ratio_thresh and bool_date[index] == True
             if in_trade and close_price[index] > top_price:
                 top_price = close_price[index]
+            # compute stop loss hit or profit target reached
+            profit_or_stop = ((top_price - close_price[index]) / top_price) * position >= stop_thresh
+            profit_or_stop = profit_or_stop or ((((close_price[index] - enter_price) / enter_price) * position) >= profit_target)
             if not in_trade and signal == 1 and not equity_stop_signal:
                 enter_price = open_price[index]
                 start_price = close_price[index]
@@ -44,21 +48,21 @@ def backtest_numba(enter_exit, close_price, open_price, df_index, stop_thresh,
                 in_trade = True
                 enter_index = index
             elif in_trade and ((signal == -1) or ((index - enter_index) >= run_length) or equity_stop_signal): #exit signal
-                profit[enter_index] = (open_price[index] - enter_price) * shares
+                profit[enter_index] = (open_price[index] - enter_price) * shares * position
                 exit_profit[index] = profit[enter_index]
                 exit_index[enter_index] = df_index[index]
                 actual_enter_exit[index] = -1
                 in_trade = False
                 shares = 0
-            elif in_trade and ((top_price - close_price[index]) / top_price) >= stop_thresh:
-                profit[enter_index] = (open_price[index] - enter_price) * shares
+            elif in_trade and profit_or_stop:
+                profit[enter_index] = (open_price[index] - enter_price) * shares * position
                 exit_profit[index] = profit[enter_index]
                 exit_index[enter_index] = df_index[index]
                 actual_enter_exit[index] = -1
                 in_trade = False
                 shares = 0
             elif index == (n - 1) and in_trade:
-                profit[enter_index] = (open_price[index] - enter_price) * shares
+                profit[enter_index] = (open_price[index] - enter_price) * shares * position
                 exit_profit[index] = profit[enter_index]
                 exit_index[enter_index] = df_index[index]
                 actual_enter_exit[index] = -1
@@ -93,7 +97,8 @@ class Strategy(ABC):
 
     def backtest_seq(self, df, stop_thresh=0.1, run_length=30, inv_price=10000,
                      prof_avg_offset=30, ewm_prof_offset=100, mv_avg=None, equity=None,
-                     pickup_dt=dt.datetime(1990, 10, 18), mv_avg_ratio_thresh=.97):
+                     pickup_dt=dt.datetime(1990, 10, 18), mv_avg_ratio_thresh=.97,
+                     position=1, profit_target=np.inf):
         if mv_avg is None or equity is None:
             mv_avg = np.zeros(df.shape[0])
             equity = np.zeros(df.shape[0])
@@ -103,7 +108,7 @@ class Strategy(ABC):
             df.enter_exit_sig.values, df.adj_close.values,
             df.next_open.values, df.index.values, stop_thresh, run_length,
             inv_price, equity / mv_avg, (df['date'] >= pickup_dt).values,
-            mv_avg_ratio_thresh
+            mv_avg_ratio_thresh, position, profit_target
         )
         df.loc[:, 'profit'] = profit
         df.loc[:, 'exit_profit'] = exit_profit
@@ -388,7 +393,7 @@ class BollingerStrategy(Strategy):
                 self.get_exits(x), roc_change=30
             )
         )
-        df_profits = df_enter_exit.groupby('symbol').apply(lambda x: self.backtest_seq(x, stop_thresh=0.2, inv_price=10000, run_length=run_length))
+        df_profits = df_enter_exit.groupby('symbol').apply(lambda x: self.backtest_seq(x, stop_thresh=0.2, inv_price=10000, run_length=run_length, profit_target=0.3))
         return df_profits
 
 
@@ -419,5 +424,5 @@ class MACDStrategy(Strategy):
                 self.get_exits(x), roc_change=10
             )
         )
-        df_profits = df_enter_exit.groupby('symbol').apply(lambda x: self.backtest_seq(x, stop_thresh=0.2, inv_price=10000, run_length=run_length))
+        df_profits = df_enter_exit.groupby('symbol').apply(lambda x: self.backtest_seq(x, stop_thresh=0.2, inv_price=10000, run_length=run_length, profit_target=0.2))
         return df_profits
