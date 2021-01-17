@@ -360,7 +360,7 @@ class BreakoutStrategy(Strategy):
                 self.get_exits(x), roc_change=30
             )
         )
-        df_profits = df_enter_exit.groupby('symbol').apply(lambda x: self.backtest_seq(x, stop_thresh=0.2, inv_price=10000, run_length=run_length))
+        df_profits = df_enter_exit.groupby('symbol').apply(lambda x: self.backtest_seq(x, stop_thresh=0.2, inv_price=10000, run_length=run_length, profit_target=0.2))
         return df_profits
 
 
@@ -393,7 +393,7 @@ class BollingerStrategy(Strategy):
                 self.get_exits(x), roc_change=30
             )
         )
-        df_profits = df_enter_exit.groupby('symbol').apply(lambda x: self.backtest_seq(x, stop_thresh=0.2, inv_price=10000, run_length=run_length, profit_target=0.3))
+        df_profits = df_enter_exit.groupby('symbol').apply(lambda x: self.backtest_seq(x, stop_thresh=0.2, inv_price=10000, run_length=run_length, profit_target=0.2))
         return df_profits
 
 
